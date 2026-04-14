@@ -1,0 +1,30 @@
+target-version = "py313"
+line-length = 120
+
+[lint]
+# Enable absolutely everything
+select = ["ALL"]
+ignore = [
+    "COM812",
+    "D1",
+    "D203",
+    "D213",
+    "E501",
+    "TC006",
+    "T201",     # print statements (needed for CLI)
+    "FBT001",   # Boolean typed positional argument (acceptable for CLI)
+    "FBT002",   # Boolean default positional argument (acceptable for CLI)
+    "BLE001",   # Catching broad exceptions (justified for error handling)
+    "ANN401",   # typing.Any (needed for third-party libraries like GLiNER)
+    "PTH123",   # Path.open() (stylistic preference)
+    "C901",     # Function is too complex (acceptable for CLI main function)
+    "PLR0912",  # Too many branches (acceptable for CLI main function)
+    "UP017",    # datetime.UTC alias (timezone.utc is explicit and pyright-safe)
+]
+
+[lint.isort]
+known-first-party = ["forms", "graph"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
