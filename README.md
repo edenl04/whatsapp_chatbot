@@ -6,25 +6,7 @@ A WhatsApp Web automation backend powered by LangGraph and LangChain. The bot re
 
 This project is an AI-powered Tier-1 IT and network support assistant that works through WhatsApp. It can understand natural language requests, preserve chat history, ask for missing information, create Zoom meetings, send request forms, run safe read-only network diagnostics, and escalate privileged work to an admin group.
 
-WhatsApp is the communication channel. LangGraph is the workflow engine. The ReAct agent is only one node inside that workflow, used when tool execution is appropriate.
-
-## Why LangGraph
-
-This is not just a simple ReAct agent connected to WhatsApp. A simple ReAct bot usually receives a message, decides whether to use a tool, and answers. This project needs a stricter support workflow:
-
-1. Read unread WhatsApp chats.
-2. Preserve recent chat history.
-3. Detect whether translation is needed.
-4. Translate to English for tool and routing consistency.
-5. Route the request to the right path.
-6. Ask for missing information when the request is incomplete.
-7. Decide whether automation is safe or whether admins are required.
-8. Use the ReAct agent only when tool execution is allowed.
-9. Format the tool result into a user-friendly answer.
-10. Translate the response back to the user's original language when needed.
-11. Send the response to the user or admin group.
-
-LangGraph makes this flow explicit, modular, testable, and easier to extend. Instead of hiding all decisions inside one large prompt, each workflow step is represented as a node with clear routing behavior.
+Technically, WhatsApp is only the transport layer: LangGraph coordinates translation, routing, safety checks, tool execution, response formatting, and escalation, while the ReAct agent is used as a controlled execution node for approved tools such as Zoom, Netmiko diagnostics, Genie parsing, Tavily search, and optional NetBox MCP context.
 
 ## Capabilities
 
