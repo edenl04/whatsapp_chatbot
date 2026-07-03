@@ -1,51 +1,190 @@
-# WhatsApp AI Chatbot (WhatsApp Web automation + LangGraph)
+# WhatsApp AI Chatbot
 
-Backend demo project that combines:
-- WhatsApp Web browser automation (`pyppeteer`) to read and send messages
-- A LangGraph/LangChain agent that routes requests, asks clarifying questions, and can trigger tools (e.g. Zoom meeting creation)
+A WhatsApp Web automation backend powered by LangGraph and LangChain. The bot reads unread WhatsApp chats, processes each client request through a controlled AI support workflow, uses tools when needed, and sends back a response, file, Zoom meeting details, or admin escalation message.
 
-## Important note
-This project automates WhatsApp Web (not the official WhatsApp Business API). Using automation/scraping may violate WhatsApp terms of service. Use at your own risk and only on accounts you control.
+## Overview
 
-## Key features
-- Monitors unread WhatsApp chats and extracts recent chat history
-- Detects non‑English messages, translates to English for processing, and can translate the response back
-- Routes requests (handle directly, ask for more info, send a form, or escalate to admins)
-- Can create Zoom meetings via Zoom API and return a shareable (optionally shortened) link
-- Can reply with a file attachment (e.g. `.docx` forms under `forms/`)
+This project is an AI-powered Tier-1 IT and network support assistant that works through WhatsApp. It can understand natural language requests, preserve chat history, ask for missing information, create Zoom meetings, send request forms, run safe read-only network diagnostics, and escalate privileged work to an admin group.
 
-## Repo layout
-- `main.py` – main loop: fetch unread chats, invoke the graph, send responses
-- `whatsapp_scraper.py` – WhatsApp Web automation (read messages, send messages/files)
-- `graph/graph.py` – LangGraph state machine wiring
-- `graph/nodes.py` – routing, translation, formatting, and tool-calling nodes
-- `graph/tools/zoom_tool.py` – Zoom meeting tool (+ conflict detection)
-- `forms/` – example `.docx` request forms sent to users when needed
+WhatsApp is the communication channel. LangGraph is the workflow engine. The ReAct agent is only one node inside that workflow, used when tool execution is appropriate.
 
-## Prerequisites
-- Windows + Google Chrome installed
-- Python 3.13+
-- A persistent Chrome profile directory so WhatsApp stays logged in (see `SELENIUM_PROFILE_PATH` below)
+## Why LangGraph
+
+This is not just a simple ReAct agent connected to WhatsApp. A simple ReAct bot usually receives a message, decides whether to use a tool, and answers. This project needs a stricter support workflow:
+
+1. Read unread WhatsApp chats.
+2. Preserve recent chat history.
+3. Detect whether translation is needed.
+4. Translate to English for tool and routing consistency.
+5. Route the request to the right path.
+6. Ask for missing information when the request is incomplete.
+7. Decide whether automation is safe or whether admins are required.
+8. Use the ReAct agent only when tool execution is allowed.
+9. Format the tool result into a user-friendly answer.
+10. Translate the response back to the user's original language when needed.
+11. Send the response to the user or admin group.
+
+LangGraph makes this flow explicit, modular, testable, and easier to extend. Instead of hiding all decisions inside one large prompt, each workflow step is represented as a node with clear routing behavior.
+
+## Capabilities
+
+### WhatsApp Automation
+
+- Opens WhatsApp Web with a persistent Chrome profile.
+- Reads unread chats and extracts recent conversation history.
+- Sends text responses, single-bubble multiline responses, and file attachments.
+- Sends admin escalation messages to a configured WhatsApp group.
+
+### Parallel Agent Processing
+
+- Processes multiple unread clients in the same scan cycle.
+- Runs independent graph executions per chat.
+- Limits concurrent agent work with a semaphore.
+- Keeps WhatsApp sending sequential after processing to avoid Chrome profile conflicts.
+
+### AI Support Workflow
+
+- Detects the user's language.
+- Translates non-English requests to English for consistent processing.
+- Routes requests between direct answer, follow-up question, form delivery, tool execution, and admin escalation.
+- Translates final responses back to the user's original language when needed.
+
+### Tool Use
+
+- Creates Zoom meetings with conflict detection.
+- Sends hardware/account request forms from `forms/`.
+- Uses Tavily search when external information is needed.
+- Runs safe read-only network diagnostics.
+- Optionally loads NetBox MCP tools for trusted network source-of-truth context.
+
+## Network Diagnostics
+
+Network diagnostic tools live in `graph/tools/network_diagnostics/`. They are designed for Tier-1 triage only and intentionally avoid configuration changes.
+
+### Diagnostic Tools
+
+- `ping_host`: checks host or IP reachability.
+- `dns_lookup`: checks DNS resolution.
+- `trace_route`: checks the network path to a host.
+- `show_device_command`: connects to approved inventory devices with Netmiko and runs allowlisted show commands.
+- `parse_show_output`: parses supported Cisco show output into structured data with Genie when available.
+
+### Allowed Show Commands
+
+- `show ip interface brief`
+- `show interfaces`
+- `show arp`
+- `show ip route`
+- `show mac address-table`
+- `show mac-address table`
+- `show version`
+- `show logging`
+
+### Safety Model
+
+The diagnostics block arbitrary shell syntax and dangerous network actions, including:
+
+- Configuration mode commands.
+- Reloads, deletes, copies, writes, and erases.
+- Interface shutdown/no shutdown.
+- VLAN, firewall, routing, password, and permission changes.
+- Commands against devices that are not in the approved inventory.
+
+## Architecture Flow
+
+1. `main.py` opens WhatsApp Web and collects unread chats.
+2. Each chat becomes an independent graph state with `user_input`, `chat_history`, and `client_name`.
+3. LangGraph processes multiple states concurrently.
+4. The workflow translates, routes, checks safety, and calls the ReAct agent only when tools are appropriate.
+5. Tools return results to the workflow.
+6. The response is formatted, translated back if needed, and sent through WhatsApp Web.
+
+## Project Layout
+
+- `main.py`: WhatsApp scan loop, parallel graph processing, and sequential response sending.
+- `whatsapp_scraper.py`: WhatsApp Web automation for reading chats and sending messages/files.
+- `graph/graph.py`: LangGraph workflow wiring.
+- `graph/nodes.py`: translation, routing, privilege checks, ReAct prompting, formatting, and response translation.
+- `graph/tools/tools.py`: central tool registry used by the ReAct agent.
+- `graph/tools/zoom_tool.py`: Zoom meeting creation and conflict detection.
+- `graph/tools/network_diagnostics/`: read-only network diagnostics, inventory loading, and validation.
+- `graph/tools/mcp_tools.py`: optional NetBox MCP loading.
+- `forms/`: `.docx` request forms sent to users.
+- `tests/`: pytest coverage for diagnostics, MCP defaults, and parallel processing.
 
 ## Configuration
-Update the following constants in `graph/constant.py`:
-- `CHROME_PATH` – path to `chrome.exe`
-- `SELENIUM_PROFILE_PATH` – folder used as Chrome user data dir (WhatsApp login is stored here)
-- `ADMIN_GROUP_NAME` – the WhatsApp chat/group name used for escalations
 
-## Environment variables
-Create a local `.env` (do not commit it) and set what you need:
-- `GOOGLE_API_KEY` – used by `langchain_google_genai.ChatGoogleGenerativeAI`
-- `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_ACCOUNT_ID` – used by `graph/tools/zoom_tool.py`
-- `TAVILY_API_KEY` – optional, only if you use `TavilySearchResults` (`graph/tools/tools.py`)
+Update these constants in `graph/constant.py`:
+
+- `CHROME_PATH`: path to `chrome.exe`.
+- `SELENIUM_PROFILE_PATH`: Chrome user data directory used to keep WhatsApp logged in.
+- `ADMIN_GROUP_NAME`: WhatsApp chat/group name used for admin escalation.
+
+Network device inventory can be configured in code through `DEVICE_INVENTORY` or through `.env` as JSON:
+
+```text
+NET_DIAGNOSTIC_DEVICE_INVENTORY={"core_switch":{"device_type":"cisco_ios","host":"10.0.0.10"}}
+```
+
+The Netmiko tool only connects to devices in the approved inventory.
+
+## Environment Variables
+
+Create a local `.env` file and do not commit real secrets.
+
+### Core
+
+- `GOOGLE_API_KEY`: used by `langchain_google_genai.ChatGoogleGenerativeAI`.
+- `TAVILY_API_KEY`: optional web search support.
+
+### Zoom
+
+- `ZOOM_CLIENT_ID`
+- `ZOOM_CLIENT_SECRET`
+- `ZOOM_ACCOUNT_ID`
+
+### Network Diagnostics
+
+- `NET_DIAGNOSTIC_DEVICE_INVENTORY`
+- `NETMIKO_USERNAME`
+- `NETMIKO_PASSWORD`
+- `NETMIKO_SECRET`
+
+### Optional NetBox MCP
+
+- `ENABLE_NETBOX_MCP=true`
+- `NETBOX_MCP_COMMAND`
+- `NETBOX_MCP_ARGS`
+
+NetBox MCP is disabled by default. Enable it only after a NetBox MCP server and credentials are configured.
+
+## Installation
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -U pip
+pip install -e .
+```
 
 ## Run
-1. Install dependencies (this repo uses `pyproject.toml`):
-   - `python -m venv .venv`
-   - `.venv\\Scripts\\activate`
-   - `pip install -U pip`
-   - `pip install -e .`
-2. Start the bot:
-   - `python main.py`
 
-The first run opens WhatsApp Web in Chrome. Scan the QR code once (or reuse your profile directory) so future runs stay authenticated.
+```powershell
+python main.py
+```
+
+The first run opens WhatsApp Web in Chrome. Scan the QR code once, or reuse the configured Chrome profile directory to stay authenticated.
+
+## Test
+
+Run the non-WhatsApp test suite:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'; python -m pytest -q
+```
+
+The tests validate diagnostic command safety, public tool behavior, optional NetBox MCP default behavior, and parallel graph processing without opening WhatsApp Web.
+
+## Important Note
+
+This project automates WhatsApp Web, not the official WhatsApp Business API. Browser automation can be fragile and may violate WhatsApp terms of service. Use only on accounts you control and understand the operational risk.

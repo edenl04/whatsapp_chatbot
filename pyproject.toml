@@ -6,9 +6,21 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "google-genai>=1.0.0",
+    "genie>=24.0",
+    "langchain>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-google-genai>=2.0.0",
+    "langchain-mcp-adapters>=0.1.0",
+    "langgraph>=0.2.0",
+    "netmiko>=4.0.0",
+    "pyats>=24.0",
+    "pyppeteer>=2.0.0",
+    "pyshorteners>=1.0.0",
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
     "python-multipart>=0.0.9",
+    "requests>=2.32.0",
     "streamlit>=1.55.0",
     "httpx>=0.28.1",
 ]

@@ -89,6 +89,8 @@ def router_node(state):
                    - The user mentions specific systems: 'tamar.tree', 'active directory', 'smart.even', 'saturn.system', or 'comet.system'.
                    - The user requests a meeting/Zoom and provides ALL required details: a specific start and end time (e.g., 11:00-12:00) AND a date (e.g., tomorrow, 14.5).
                    - The user requests a file transfer ('Halavana' or 'HaShkharah') and has already provided ALL necessary details (both source and destination networks).
+                   - The user asks for read-only Tier-1 network diagnostics and provides enough target information such as hostname, IP address, device name, interface name, network name, or system name.
+                   - Read-only diagnostics include ping, DNS lookup, traceroute, route table checks, ARP checks, MAC address table checks, interface status, packet loss, latency, or basic reachability.
                    - The client has provided all the necessary information for you to fully resolve their issue without asking follow-up questions.
 
                 4. need_to (Use this when information is missing)
@@ -96,6 +98,7 @@ def router_node(state):
                    - The user mentions a PC or phone but DOES NOT specify which network they are on (one of: 'army.TS_idf', 'army.S_idf', 'army.civil', 'army.preserved').
                    - The user requests a file transfer ('Halavana' or 'HaShkharah') but is MISSING details (e.g., missing the source or destination network, or recipient).
                    - The user requests a meeting but is MISSING the start/end time or the date.
+                   - The user asks for network diagnostics but does not provide a target host, IP, device, interface, network, or symptom.
 
                 Always evaluate the rules in the order above. If the input matches multiple categories, select the most specific matching category.
              """,
@@ -197,12 +200,14 @@ def has_admin_privileges_node(state):
                  1) when the client is working on army.civil
                  2) when the client is asking for help with any thing related to android or apple phones
                  3) when the client when to create a meeting but there us not a spiffy start and end time 
+                 4) when the client asks for read-only Tier-1 diagnostics such as ping, DNS lookup, traceroute, route table checks, ARP checks, MAC address table checks, interface status, logs, version, or basic reachability
                  
                  when he doesn't have:
                  1) when he need to put a username and passwork to bypass admin privileges when its not on army.civil network 
                  2) when he wants to be add to a security group (it's allways in the active directory)
                  3) when the client is mentioning Halavana and HaShkharah he doesn't have privileges fo it 
                  4) when the user is asking for partitions for comet.system, saturn.system, smart.even, active directory, tamar.tree
+                 5) when the user asks for configuration changes such as VLAN changes, firewall changes, routing changes, device reloads, interface shutdown/no shutdown, password resets, permission changes, or Active Directory group changes
                  """,),
                 ("human", "{user_message}"),
             ]).partial(user_message=user_input,client_name=client_name)
@@ -261,8 +266,21 @@ def react_agent_node(state):
 
     1. Meeting Creator: Create Zoom meetings by converting natural language requests into exact ISO 8601 date/time and meeting details.
     2. Web Search: Search the internet for any additional information needed to answer questions or clarify user requests.
+    3. Network Diagnostics: Use ping_host, dns_lookup, trace_route, show_device_command, and parse_show_output for read-only Tier-1 network triage.
 
-    Always use the Web Search tool whenever you need more information beyond what is provided.
+    Diagnostic tool guidance:
+    - Use ping_host for basic reachability checks.
+    - Use dns_lookup for hostname or DNS resolution problems.
+    - Use trace_route for path, latency, packet loss, or hop-by-hop connectivity issues.
+    - If NetBox MCP tools are available, use them first to validate device names, management IPs, platform, site, VLAN, and interface context.
+    - Use show_device_command for approved read-only network device show commands on inventory-approved routers or switches.
+    - Use parse_show_output after show_device_command when structured Cisco output is needed, especially for interfaces, ARP, routes, and MAC address tables.
+    - Never run configuration commands, reloads, deletes, writes, shutdown/no shutdown, password changes, firewall changes, VLAN changes, or Active Directory changes.
+    - Never run arbitrary shell commands.
+    - If a diagnostic request is missing the target host, IP, device, interface, network, or symptom, ask one concise follow-up question.
+    - Summarize diagnostic results with what was checked, what passed or failed, the likely meaning, and the recommended next step.
+
+    Use the Web Search tool only when you need external information beyond the chat and diagnostic tools.
 
     When the user requests a meeting using natural phrases like:
     {', '.join(TIME_PHRASES_LIST)}
