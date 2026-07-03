@@ -1,18 +1,19 @@
 # WhatsApp AI Chatbot
 
-A WhatsApp Web automation backend powered by LangGraph and LangChain. The bot reads unread WhatsApp chats, processes each client request through a controlled AI support workflow, uses tools when needed, and sends back a response, file, Zoom meeting details, or admin escalation message.
+A WhatsApp Web automation backend powered by Pyppeteer, LangGraph, and LangChain. The bot reads unread WhatsApp chats, processes each client request through a controlled AI support workflow, uses tools when needed, and sends back a response, file, Zoom meeting details, or admin escalation message.
 
 ## Overview
 
 This project is an AI-powered Tier-1 IT and network support assistant that works through WhatsApp. It can understand natural language requests, preserve chat history, ask for missing information, create Zoom meetings, send request forms, run safe read-only network diagnostics, and escalate privileged work to an admin group.
 
-Technically, WhatsApp is only the transport layer: LangGraph coordinates translation, routing, safety checks, tool execution, response formatting, and escalation, while the ReAct agent is used as a controlled execution node for approved tools such as Zoom, Netmiko diagnostics, Genie parsing, Tavily search, and optional NetBox MCP context.
+Technically, Pyppeteer drives the WhatsApp Web browser session, WhatsApp is the transport layer, and LangGraph coordinates translation, routing, safety checks, tool execution, response formatting, and escalation. The ReAct agent is used as a controlled execution node for approved tools such as Zoom, Netmiko diagnostics, Genie parsing, Tavily search, and optional NetBox MCP context.
 
 ## Capabilities
 
 ### WhatsApp Automation
 
 - Opens WhatsApp Web with a persistent Chrome profile.
+- Uses Pyppeteer to automate browser actions for reading chats and sending replies.
 - Reads unread chats and extracts recent conversation history.
 - Sends text responses, single-bubble multiline responses, and file attachments.
 - Sends admin escalation messages to a configured WhatsApp group.
