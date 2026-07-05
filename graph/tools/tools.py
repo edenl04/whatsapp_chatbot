@@ -1,4 +1,4 @@
-from langchain_community.tools import TavilySearchResults
+from langchain_tavily import TavilySearch
 
 from .network_diagnostics import (
     dns_lookup,
@@ -13,13 +13,18 @@ from .zoom_tool import ZoomTool
 zoom_tool = ZoomTool()
 
 
-all_tools = [
-    zoom_tool,
+network_diagnostic_tools = [
     ping_host,
     trace_route,
     dns_lookup,
     show_device_command,
     parse_show_output,
-    TavilySearchResults(max_results=2),
+]
+
+base_tools = [
+    zoom_tool,
+    TavilySearch(max_results=2),
 ] + load_optional_mcp_tools()
+
+all_tools = base_tools + network_diagnostic_tools
 

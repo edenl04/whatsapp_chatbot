@@ -1,11 +1,17 @@
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain.prompts import ChatPromptTemplate, PromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from datetime import datetime
 from langchain_core.messages import HumanMessage, AIMessage
 
 
 from .constant import LLM, TIME_PHRASES_LIST, ADMIN_GROUP_NAME
+from .network_policy import (
+    AgentRuntimeContext,
+    filter_network_tools,
+    is_army_preserved_confirmed,
+    is_network_diagnostic_request,
+)
 from .state_and_schamas import *
 from .tools.tools import all_tools
 load_dotenv()
@@ -68,6 +74,9 @@ def router_node(state):
     user_input = state.get("translated_input") or state["user_input"]
     chat_history = state.get("chat_history") or []
 
+    if is_network_diagnostic_request(state) and not is_army_preserved_confirmed(state):
+        return {"condition": "need_to"}
+
     router_prompt = ChatPromptTemplate(
         [
             ("system",
@@ -89,8 +98,8 @@ def router_node(state):
                    - The user mentions specific systems: 'tamar.tree', 'active directory', 'smart.even', 'saturn.system', or 'comet.system'.
                    - The user requests a meeting/Zoom and provides ALL required details: a specific start and end time (e.g., 11:00-12:00) AND a date (e.g., tomorrow, 14.5).
                    - The user requests a file transfer ('Halavana' or 'HaShkharah') and has already provided ALL necessary details (both source and destination networks).
-                   - The user asks for read-only Tier-1 network diagnostics and provides enough target information such as hostname, IP address, device name, interface name, network name, or system name.
-                   - Read-only diagnostics include ping, DNS lookup, traceroute, route table checks, ARP checks, MAC address table checks, interface status, packet loss, latency, or basic reachability.
+                   - The user asks for read-only Tier-1 network diagnostics, army.preserved is confirmed, and the user provides enough target information such as hostname, IP address, device name, interface name, network name, or system name.
+                   - Read-only diagnostics include ping, DNS lookup, traceroute, route table checks, ARP checks, MAC address table checks, interface status, packet loss, latency, or basic reachability, but they are only allowed for army.preserved.
                    - The client has provided all the necessary information for you to fully resolve their issue without asking follow-up questions.
 
                 4. need_to (Use this when information is missing)
@@ -99,6 +108,7 @@ def router_node(state):
                    - The user requests a file transfer ('Halavana' or 'HaShkharah') but is MISSING details (e.g., missing the source or destination network, or recipient).
                    - The user requests a meeting but is MISSING the start/end time or the date.
                    - The user asks for network diagnostics but does not provide a target host, IP, device, interface, network, or symptom.
+                   - The user asks for network diagnostics but army.preserved is not explicitly confirmed.
 
                 Always evaluate the rules in the order above. If the input matches multiple categories, select the most specific matching category.
              """,
@@ -162,6 +172,7 @@ def ask_for_more_info_node(state):
              your job is to ask the client for more information for for helping them solve Any problem they have:
              core information that is needed:
              1) check if the client mentioned one of the network (one of army.TS_idf, army.S_idf, army.civil, army.preserved).
+             For network diagnostic requests, first ask the client to confirm the affected network. Network diagnostic tools are only available when the affected network is army.preserved.
              2) when the client is mentioning Halavana and HaShkharah he most provide wrote 2 network names that are not the same and to whom or where to send the file.
              3) think if the client gave you sufficient information 
              4) when the user didn't spiffy start and end time, a for the for a meeting ask when for that info 
@@ -185,7 +196,12 @@ def has_admin_privileges_node(state):
     #  will return yes or no (need to create a schama for that)
     print("**entering has_admin_privileges_node**")
     user_input = state.get("translated_input") or state["user_input"]
-    client_name = state.get("client_name")
+    client_name = state.get("client_name") or ""
+
+    if is_network_diagnostic_request(state):
+        return {
+            "condition": "need_to" if is_army_preserved_confirmed(state) else "don't_need_to"
+        }
 
     if "admin" in client_name:
         have_privileges = "need_to"
@@ -200,7 +216,7 @@ def has_admin_privileges_node(state):
                  1) when the client is working on army.civil
                  2) when the client is asking for help with any thing related to android or apple phones
                  3) when the client when to create a meeting but there us not a spiffy start and end time 
-                 4) when the client asks for read-only Tier-1 diagnostics such as ping, DNS lookup, traceroute, route table checks, ARP checks, MAC address table checks, interface status, logs, version, or basic reachability
+                 4) when the client asks for read-only Tier-1 diagnostics on confirmed army.preserved, such as ping, DNS lookup, traceroute, route table checks, ARP checks, MAC address table checks, interface status, logs, version, or basic reachability
                  
                  when he doesn't have:
                  1) when he need to put a username and passwork to bypass admin privileges when its not on army.civil network 
@@ -208,6 +224,7 @@ def has_admin_privileges_node(state):
                  3) when the client is mentioning Halavana and HaShkharah he doesn't have privileges fo it 
                  4) when the user is asking for partitions for comet.system, saturn.system, smart.even, active directory, tamar.tree
                  5) when the user asks for configuration changes such as VLAN changes, firewall changes, routing changes, device reloads, interface shutdown/no shutdown, password resets, permission changes, or Active Directory group changes
+                 6) when the user asks for network diagnostics but army.preserved is not confirmed
                  """,),
                 ("human", "{user_message}"),
             ]).partial(user_message=user_input,client_name=client_name)
@@ -259,16 +276,19 @@ def react_agent_node(state):
     chat_history_str = "\n".join(chat_history_list)
 
     today_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    army_preserved_confirmed = is_army_preserved_confirmed(state)
 
-    template = f'''Today's date is {today_date}.
+    system_prompt = f'''Today's date is {today_date}.
 
     You have access to the following tools:
 
     1. Meeting Creator: Create Zoom meetings by converting natural language requests into exact ISO 8601 date/time and meeting details.
     2. Web Search: Search the internet for any additional information needed to answer questions or clarify user requests.
-    3. Network Diagnostics: Use ping_host, dns_lookup, trace_route, show_device_command, and parse_show_output for read-only Tier-1 network triage.
+    3. Network Diagnostics: Use ping_host, dns_lookup, trace_route, show_device_command, and parse_show_output only when army.preserved is confirmed.
 
     Diagnostic tool guidance:
+    - Network diagnostic tools are allowed only for confirmed army.preserved requests.
+    - If army.preserved is not confirmed, ask the user to confirm the affected network and do not attempt diagnostics.
     - Use ping_host for basic reachability checks.
     - Use dns_lookup for hostname or DNS resolution problems.
     - Use trace_route for path, latency, packet loss, or hop-by-hop connectivity issues.
@@ -288,44 +308,35 @@ def react_agent_node(state):
     — automatically convert these into an exact date and time in ISO 8601 format (YYYY-MM-DDTHH:MM:SS), using today's date as the reference point.
 
     Decide carefully which tool to call based on the user's input. If no tool is needed, respond directly.
-    Chat history:
-    {{chat_history}}
-    
-    Answer the following questions as best you can. You have access to the following tools:
-
-    {{tools}}
-
-    Use the following format:
-
-    Question: the input question you must answer
-    Thought: you should always think about what to do
-    Action: the action to take, should be one of [{{tool_names}}]
-    Action Input: the input to the action
-    Observation: the result of the action
-    ... (this Thought/Action/Action Input/Observation can repeat N times)
-    Thought: I now know the final answer
-    Final Answer: the final answer to the original input question
-
-    Begin!
-
-    Question: {{input}}
-    Thought:{{agent_scratchpad}}
 
     note: when the user ask for a meeting and somthing like 13-14 he means 13:00-14:00
     '''
 
-    react_prompt = PromptTemplate.from_template(template)
+    user_message = f"""Chat history:
+{chat_history_str}
 
-    print(react_prompt)
-    agent = create_react_agent(
-        LLM, tools=all_tools,
-        prompt=react_prompt
+Question:
+{user_input}
+"""
+
+    agent = create_agent(
+        LLM,
+        tools=all_tools,
+        system_prompt=system_prompt,
+        middleware=[filter_network_tools],
+        context_schema=AgentRuntimeContext,
     )
-    agent_executor = AgentExecutor(agent=agent, tools=all_tools, handle_parsing_errors=True, verbose=True,
-                                   max_iterations=5)
-    response = agent_executor.invoke({"input": user_input, "chat_history": chat_history_str})
+    response = agent.invoke(
+        {"messages": [{"role": "user", "content": user_message}]},
+        context=AgentRuntimeContext(
+            army_preserved_confirmed=army_preserved_confirmed,
+            client_name=state.get("client_name"),
+            network_context="army.preserved" if army_preserved_confirmed else None,
+        ),
+    )
     print(f"response = {response}")
-    return {"main_node_output": str(response["output"])}
+    final_message = response["messages"][-1]
+    return {"main_node_output": str(final_message.content)}
 
 def organize_answer_node(state):
     # its organize the output of the React agent node
